@@ -67,6 +67,7 @@ export const recordPartnerPaymentSchema = z.object({
   currencyCode: currencyCodeSchema,
   amount: z.coerce.number().positive(),
   accountId: uuidSchema,
+  paymentExchangeRate: z.coerce.number().positive().optional(),
   paymentDate: z.coerce.date(),
   notes: z.string().trim().min(1).max(500).optional(),
 });

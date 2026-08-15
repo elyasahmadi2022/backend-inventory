@@ -305,7 +305,11 @@ export async function recordPartnerPayment(
       input.paymentDate,
     );
     const accountAmount =
-      (input.amount * exchangeRateToBase) / accountRateToBase;
+      accountCurrencyCode === input.currencyCode
+        ? input.amount
+        : input.paymentExchangeRate
+          ? input.amount * input.paymentExchangeRate
+          : (input.amount * exchangeRateToBase) / accountRateToBase;
     const transactionAccount = await resolvePaymentAccount(
       tx,
       input.accountId,
