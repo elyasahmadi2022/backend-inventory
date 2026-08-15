@@ -1,0 +1,849 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum CurrencyCode {
+  AFN
+  USD
+  PKR
+}
+
+enum UserStatus {
+  active
+  disabled
+}
+
+enum PermissionEffect {
+  allow
+  deny
+}
+
+enum DebitCredit {
+  debit
+  credit
+}
+
+enum AccountCategory {
+  asset
+  liability
+  equity
+  revenue
+  expense
+}
+
+enum AccountType {
+  cash
+  bank
+  sarafi
+  daskhil
+  accounts_receivable
+  accounts_payable
+  inventory
+  cost_of_goods_sold
+  sales_revenue
+  purchase
+  expense
+  equity
+  liability
+  exchange_gain
+  exchange_loss
+  other
+}
+
+enum PartnerType {
+  customer
+  vendor
+  both
+  sarafi
+  staff
+}
+
+enum PartnerLedgerAccountType {
+  receivable
+  payable
+  advance_received
+  advance_paid
+  deposit
+}
+
+enum JournalStatus {
+  draft
+  posted
+  reversed
+  voided
+}
+
+enum JournalSourceType {
+  manual
+  sale
+  purchase
+  payment
+  money_transfer
+  inventory_adjustment
+  opening_balance
+}
+
+enum FiscalPeriodStatus {
+  open
+  locked
+  closed
+}
+
+enum LocationType {
+  warehouse
+  store
+  shelf
+  in_transit
+  damaged
+}
+
+enum InventoryMovementType {
+  opening_stock
+  purchase_receipt
+  sale_issue
+  transfer
+  adjustment_in
+  adjustment_out
+  return_in
+  return_out
+}
+
+enum InventoryMovementStatus {
+  draft
+  posted
+  cancelled
+}
+
+enum DocumentStatus {
+  draft
+  posted
+  partially_paid
+  paid
+  cancelled
+}
+
+enum PaymentDirection {
+  receive
+  pay
+}
+
+enum ReturnDocumentType {
+  sale
+  purchase
+}
+
+enum MoneyTransferStatus {
+  draft
+  posted
+  cancelled
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Char(36)
+  name        String           @unique
+  description String?
+  users       UserRole[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Char(36)
+  key         String           @unique
+  description String?
+  roles       RolePermission[]
+  users       UserPermission[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId    String   @map("user_id") @db.Char(36)
+  roleId    String   @map("role_id") @db.Char(36)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String           @map("role_id") @db.Char(36)
+  permissionId String           @map("permission_id") @db.Char(36)
+  effect       PermissionEffect @default(allow)
+  role         Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserPermission {
+  userId       String           @map("user_id") @db.Char(36)
+  permissionId String           @map("permission_id") @db.Char(36)
+  effect       PermissionEffect @default(allow)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@map("user_permissions")
+}
+
+model User {
+  id               String              @id @default(uuid()) @db.Char(36)
+  code             String?             @unique
+  fullName         String              @map("full_name")
+  username         String              @unique
+  email            String?             @unique
+  profileImageUrl  String?             @map("profile_image_url")
+  passwordHash     String              @map("password_hash")
+  status           UserStatus          @default(active)
+  roles            UserRole[]
+  permissions      UserPermission[]
+  createdRates     ExchangeRate[]      @relation("ExchangeRateCreator")
+  createdJournals  JournalEntry[]      @relation("JournalCreator")
+  postedJournals   JournalEntry[]      @relation("JournalPoster")
+  createdMovements InventoryMovement[] @relation("InventoryMovementCreator")
+  salesInvoices    SalesInvoice[]      @relation("SalesInvoiceCreator")
+  purchaseBills    PurchaseBill[]      @relation("PurchaseBillCreator")
+  payments         Payment[]           @relation("PaymentCreator")
+  moneyTransfers   MoneyTransfer[]     @relation("MoneyTransferCreator")
+  authSessions     AuthSession[]
+  auditLogs        AuditLog[]
+  lastLoginAt      DateTime?           @map("last_login_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model EntityCounter {
+  key       String   @id
+  current   Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("entity_counters")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Char(36)
+  userId           String    @map("user_id") @db.Char(36)
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Char(36)
+  actorId    String?  @map("actor_id") @db.Char(36)
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  before     Json?
+  after      Json?
+  ipAddress  String?  @map("ip_address")
+  actor      User?    @relation(fields: [actorId], references: [id])
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+model StoreSetting {
+  id          String   @id @default(uuid()) @db.Char(36)
+  storeName   String   @map("store_name")
+  logoUrl     String?  @map("logo_url")
+  phone       String?
+  email       String?
+  address     String?
+  city        String?
+  country     String?
+  website     String?
+  taxNumber   String?  @map("tax_number")
+  invoiceNote String?  @map("invoice_note")
+  invoiceTemplate Json? @map("invoice_template")
+  backupEnabled Boolean @default(false) @map("backup_enabled")
+  backupFrequency String @default("daily") @map("backup_frequency")
+  backupPath String @default("automatic") @map("backup_path")
+  backupLastRunAt DateTime? @map("backup_last_run_at")
+  backupNextRunAt DateTime? @map("backup_next_run_at")
+  backupLastFilename String? @map("backup_last_filename")
+  backupLastError String? @db.Text @map("backup_last_error")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("store_settings")
+}
+
+model Currency {
+  code                           CurrencyCode           @id
+  name                           String
+  symbol                         String
+  decimalPlaces                  Int                    @default(2) @map("decimal_places")
+  isBase                         Boolean                @default(false) @map("is_base")
+  isActive                       Boolean                @default(true) @map("is_active")
+  accounts                       Account[]
+  preferredPurchaseProducts      Product[]              @relation("ProductPurchaseCurrency")
+  preferredSaleProducts          Product[]              @relation("ProductSaleCurrency")
+  journalLines                   JournalLine[]
+  salesInvoices                  SalesInvoice[]
+  purchaseBills                  PurchaseBill[]
+  payments                       Payment[]
+  moneyTransfers                 MoneyTransfer[]
+  exchangeRatesFromCurrency      ExchangeRate[]         @relation("ExchangeRateFromCurrency")
+  exchangeRatesToCurrency        ExchangeRate[]         @relation("ExchangeRateToCurrency")
+  inventoryMovementValueCurrency InventoryMovement[]    @relation("InventoryMovementValueCurrency")
+  accountBalances                AccountBalance[]
+  partnerLedgerAccounts          PartnerLedgerAccount[]
+
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id              String       @id @default(uuid()) @db.Char(36)
+  fromCurrency    CurrencyCode @map("from_currency")
+  toCurrency      CurrencyCode @map("to_currency")
+  rate            Decimal      @db.Decimal(18, 8)
+  effectiveAt     DateTime     @default(now()) @map("effective_at")
+  createdById     String?      @map("created_by") @db.Char(36)
+  createdBy       User?        @relation("ExchangeRateCreator", fields: [createdById], references: [id])
+  fromCurrencyRef Currency     @relation("ExchangeRateFromCurrency", fields: [fromCurrency], references: [code])
+  toCurrencyRef   Currency     @relation("ExchangeRateToCurrency", fields: [toCurrency], references: [code])
+
+  @@index([fromCurrency, toCurrency, effectiveAt])
+  @@map("exchange_rates")
+}
+
+model FiscalYear {
+  id        String         @id @default(uuid()) @db.Char(36)
+  name      String         @unique
+  startsOn  DateTime       @map("starts_on") @db.Date
+  endsOn    DateTime       @map("ends_on") @db.Date
+  periods   FiscalPeriod[]
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@map("fiscal_years")
+}
+
+model FiscalPeriod {
+  id           String             @id @default(uuid()) @db.Char(36)
+  fiscalYearId String             @map("fiscal_year_id") @db.Char(36)
+  name         String
+  startsOn     DateTime           @map("starts_on") @db.Date
+  endsOn       DateTime           @map("ends_on") @db.Date
+  status       FiscalPeriodStatus @default(open)
+  fiscalYear   FiscalYear         @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  journals     JournalEntry[]
+
+  @@unique([fiscalYearId, name])
+  @@index([startsOn, endsOn])
+  @@map("fiscal_periods")
+}
+
+model Account {
+  id                     String                 @id @default(uuid()) @db.Char(36)
+  code                   String                 @unique
+  name                   String
+  category               AccountCategory
+  type                   AccountType
+  normalBalance          DebitCredit            @map("normal_balance")
+  currencyCode           CurrencyCode?          @map("currency_code")
+  parentId               String?                @map("parent_id") @db.Char(36)
+  isControlAccount       Boolean                @default(false) @map("is_control_account")
+  isActive               Boolean                @default(true) @map("is_active")
+  currency               Currency?              @relation(fields: [currencyCode], references: [code])
+  parent                 Account?               @relation("AccountTree", fields: [parentId], references: [id])
+  children               Account[]              @relation("AccountTree")
+  balances               AccountBalance[]
+  journalLines           JournalLine[]
+  customerPartners       Partner[]              @relation("PartnerReceivableAccount")
+  vendorPartners         Partner[]              @relation("PartnerPayableAccount")
+  partnerLedgerAccounts  PartnerLedgerAccount[]
+  salesRevenueInvoices   SalesInvoice[]         @relation("SalesRevenueAccount")
+  salesInventoryInvoices SalesInvoice[]         @relation("SalesInventoryAccount")
+  salesCogsInvoices      SalesInvoice[]         @relation("SalesCogsAccount")
+  purchaseInventoryBills PurchaseBill[]         @relation("PurchaseInventoryAccount")
+  purchaseExpenseBills   PurchaseBill[]         @relation("PurchaseExpenseAccount")
+  paymentsFromAccount    Payment[]              @relation("PaymentFromAccount")
+  paymentsToAccount      Payment[]              @relation("PaymentToAccount")
+  transfersFromAccount   MoneyTransfer[]        @relation("TransferFromAccount")
+  transfersToAccount     MoneyTransfer[]        @relation("TransferToAccount")
+  createdAt              DateTime               @default(now()) @map("created_at")
+  updatedAt              DateTime               @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([type])
+  @@index([currencyCode])
+  @@map("accounts")
+}
+
+model AccountBalance {
+  id           String       @id @default(uuid()) @db.Char(36)
+  accountId    String       @map("account_id") @db.Char(36)
+  currencyCode CurrencyCode @map("currency_code")
+  debitTotal   Decimal      @default(0) @map("debit_total") @db.Decimal(18, 2)
+  creditTotal  Decimal      @default(0) @map("credit_total") @db.Decimal(18, 2)
+  balance      Decimal      @default(0) @db.Decimal(18, 2)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  currency     Currency     @relation(fields: [currencyCode], references: [code])
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@unique([accountId, currencyCode])
+  @@index([currencyCode])
+  @@map("account_balances")
+}
+
+model Partner {
+  id                  String                 @id @default(uuid()) @db.Char(36)
+  code                String                 @unique
+  name                String
+  type                PartnerType
+  phone               String?
+  address             String?
+  receivableAccountId String?                @map("receivable_account_id") @db.Char(36)
+  payableAccountId    String?                @map("payable_account_id") @db.Char(36)
+  isActive            Boolean                @default(true) @map("is_active")
+  receivableAccount   Account?               @relation("PartnerReceivableAccount", fields: [receivableAccountId], references: [id])
+  payableAccount      Account?               @relation("PartnerPayableAccount", fields: [payableAccountId], references: [id])
+  ledgerAccounts      PartnerLedgerAccount[]
+  journalLines        JournalLine[]
+  salesInvoices       SalesInvoice[]
+  purchaseBills       PurchaseBill[]
+  payments            Payment[]
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@map("partners")
+}
+
+model PartnerLedgerAccount {
+  id            String                   @id @default(uuid()) @db.Char(36)
+  partnerId     String                   @map("partner_id") @db.Char(36)
+  accountId     String                   @map("account_id") @db.Char(36)
+  currencyCode  CurrencyCode             @map("currency_code")
+  type          PartnerLedgerAccountType
+  isDefault     Boolean                  @default(false) @map("is_default")
+  partner       Partner                  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  account       Account                  @relation(fields: [accountId], references: [id])
+  currency      Currency                 @relation(fields: [currencyCode], references: [code])
+  salesInvoices SalesInvoice[]           @relation("SalesCustomerLedgerAccount")
+  purchaseBills PurchaseBill[]           @relation("PurchaseVendorLedgerAccount")
+
+  @@unique([partnerId, currencyCode, type])
+  @@index([accountId])
+  @@map("partner_ledger_accounts")
+}
+
+model JournalEntry {
+  id             String              @id @default(uuid()) @db.Char(36)
+  number         String              @unique
+  entryDate      DateTime            @map("entry_date") @db.Date
+  fiscalPeriodId String?             @map("fiscal_period_id") @db.Char(36)
+  description    String
+  status         JournalStatus       @default(draft)
+  sourceType     JournalSourceType   @default(manual) @map("source_type")
+  sourceId       String?             @map("source_id")
+  reversalOfId   String?             @map("reversal_of_id") @db.Char(36)
+  createdById    String?             @map("created_by") @db.Char(36)
+  postedById     String?             @map("posted_by") @db.Char(36)
+  postedAt       DateTime?           @map("posted_at")
+  fiscalPeriod   FiscalPeriod?       @relation(fields: [fiscalPeriodId], references: [id])
+  reversalOf     JournalEntry?       @relation("JournalReversal", fields: [reversalOfId], references: [id])
+  reversals      JournalEntry[]      @relation("JournalReversal")
+  createdBy      User?               @relation("JournalCreator", fields: [createdById], references: [id])
+  postedBy       User?               @relation("JournalPoster", fields: [postedById], references: [id])
+  lines          JournalLine[]
+  salesInvoices  SalesInvoice[]
+  purchaseBills  PurchaseBill[]
+  payments       Payment[]
+  moneyTransfers MoneyTransfer[]
+  movements      InventoryMovement[]
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  @@index([entryDate])
+  @@index([sourceType, sourceId])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id                 String       @id @default(uuid()) @db.Char(36)
+  journalEntryId     String       @map("journal_entry_id") @db.Char(36)
+  lineNo             Int          @map("line_no")
+  accountId          String       @map("account_id") @db.Char(36)
+  partnerId          String?      @map("partner_id") @db.Char(36)
+  currencyCode       CurrencyCode @map("currency_code")
+  exchangeRateToBase Decimal      @default(1) @map("exchange_rate_to_base") @db.Decimal(18, 8)
+  debit              Decimal      @default(0) @db.Decimal(18, 2)
+  credit             Decimal      @default(0) @db.Decimal(18, 2)
+  baseDebit          Decimal      @default(0) @map("base_debit") @db.Decimal(18, 2)
+  baseCredit         Decimal      @default(0) @map("base_credit") @db.Decimal(18, 2)
+  memo               String?
+  journalEntry       JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account            Account      @relation(fields: [accountId], references: [id])
+  partner            Partner?     @relation(fields: [partnerId], references: [id])
+  currency           Currency     @relation(fields: [currencyCode], references: [code])
+
+  @@unique([journalEntryId, lineNo])
+  @@index([accountId])
+  @@index([partnerId])
+  @@map("journal_lines")
+}
+
+model UnitOfMeasure {
+  id       String    @id @default(uuid()) @db.Char(36)
+  code     String    @unique
+  name     String
+  products Product[]
+
+  @@map("units_of_measure")
+}
+
+model ProductCategory {
+  id       String            @id @default(uuid()) @db.Char(36)
+  name     String
+  parentId String?           @map("parent_id") @db.Char(36)
+  parent   ProductCategory?  @relation("ProductCategoryTree", fields: [parentId], references: [id])
+  children ProductCategory[] @relation("ProductCategoryTree")
+  products Product[]
+
+  @@unique([parentId, name])
+  @@map("product_categories")
+}
+
+model Product {
+  id                        String                  @id @default(uuid()) @db.Char(36)
+  sku                       String                  @unique
+  barcode                   String?                 @unique
+  name                      String
+  description               String?
+  categoryId                String?                 @map("category_id") @db.Char(36)
+  baseUnitId                String                  @map("base_unit_id") @db.Char(36)
+  preferredPurchaseCurrency CurrencyCode            @default(USD) @map("preferred_purchase_currency")
+  preferredSaleCurrency     CurrencyCode            @default(AFN) @map("preferred_sale_currency")
+  standardCost              Decimal                 @default(0) @map("standard_cost") @db.Decimal(18, 2)
+  defaultSalePrice          Decimal                 @default(0) @map("default_sale_price") @db.Decimal(18, 2)
+  reorderLevel              Decimal                 @default(0) @map("reorder_level") @db.Decimal(18, 3)
+  isActive                  Boolean                 @default(true) @map("is_active")
+  category                  ProductCategory?        @relation(fields: [categoryId], references: [id])
+  baseUnit                  UnitOfMeasure           @relation(fields: [baseUnitId], references: [id])
+  purchaseCurrency          Currency                @relation("ProductPurchaseCurrency", fields: [preferredPurchaseCurrency], references: [code])
+  saleCurrency              Currency                @relation("ProductSaleCurrency", fields: [preferredSaleCurrency], references: [code])
+  inventoryBalances         InventoryBalance[]
+  inventoryMovementLines    InventoryMovementLine[]
+  salesLines                SalesInvoiceLine[]
+  purchaseLines             PurchaseBillLine[]
+  createdAt                 DateTime                @default(now()) @map("created_at")
+  updatedAt                 DateTime                @updatedAt @map("updated_at")
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+model InventoryLocation {
+  id            String                  @id @default(uuid()) @db.Char(36)
+  code          String                  @unique
+  name          String
+  type          LocationType
+  parentId      String?                 @map("parent_id") @db.Char(36)
+  isActive      Boolean                 @default(true) @map("is_active")
+  parent        InventoryLocation?      @relation("LocationTree", fields: [parentId], references: [id])
+  children      InventoryLocation[]     @relation("LocationTree")
+  balances      InventoryBalance[]
+  movementsFrom InventoryMovementLine[] @relation("MovementFromLocation")
+  movementsTo   InventoryMovementLine[] @relation("MovementToLocation")
+  saleLines     SalesInvoiceLine[]
+  purchaseLines PurchaseBillLine[]
+  createdAt     DateTime                @default(now()) @map("created_at")
+
+  @@index([type])
+  @@map("inventory_locations")
+}
+
+model InventoryBalance {
+  id         String            @id @default(uuid()) @db.Char(36)
+  productId  String            @map("product_id") @db.Char(36)
+  locationId String            @map("location_id") @db.Char(36)
+  quantity   Decimal           @default(0) @db.Decimal(18, 3)
+  product    Product           @relation(fields: [productId], references: [id])
+  location   InventoryLocation @relation(fields: [locationId], references: [id])
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  @@unique([productId, locationId])
+  @@map("inventory_balances")
+}
+
+model InventoryMovement {
+  id                String                  @id @default(uuid()) @db.Char(36)
+  number            String                  @unique
+  type              InventoryMovementType
+  status            InventoryMovementStatus @default(draft)
+  movedAt           DateTime                @default(now()) @map("moved_at")
+  valueCurrencyCode CurrencyCode?           @map("value_currency_code")
+  totalValue        Decimal                 @default(0) @map("total_value") @db.Decimal(18, 2)
+  journalEntryId    String?                 @map("journal_entry_id") @db.Char(36)
+  createdById       String?                 @map("created_by") @db.Char(36)
+  reference         String?
+  notes             String?
+  valueCurrency     Currency?               @relation("InventoryMovementValueCurrency", fields: [valueCurrencyCode], references: [code])
+  journalEntry      JournalEntry?           @relation(fields: [journalEntryId], references: [id])
+  createdBy         User?                   @relation("InventoryMovementCreator", fields: [createdById], references: [id])
+  lines             InventoryMovementLine[]
+  salesInvoices     SalesInvoice[]
+  purchaseBills     PurchaseBill[]
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  @@index([type, status])
+  @@index([movedAt])
+  @@map("inventory_movements")
+}
+
+model InventoryMovementLine {
+  id                  String             @id @default(uuid()) @db.Char(36)
+  inventoryMovementId String             @map("inventory_movement_id") @db.Char(36)
+  lineNo              Int                @map("line_no")
+  productId           String             @map("product_id") @db.Char(36)
+  fromLocationId      String?            @map("from_location_id") @db.Char(36)
+  toLocationId        String?            @map("to_location_id") @db.Char(36)
+  quantity            Decimal            @db.Decimal(18, 3)
+  unitCost            Decimal            @default(0) @map("unit_cost") @db.Decimal(18, 2)
+  lineValue           Decimal            @default(0) @map("line_value") @db.Decimal(18, 2)
+  movement            InventoryMovement  @relation(fields: [inventoryMovementId], references: [id], onDelete: Cascade)
+  product             Product            @relation(fields: [productId], references: [id])
+  fromLocation        InventoryLocation? @relation("MovementFromLocation", fields: [fromLocationId], references: [id])
+  toLocation          InventoryLocation? @relation("MovementToLocation", fields: [toLocationId], references: [id])
+
+  @@unique([inventoryMovementId, lineNo])
+  @@index([productId])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("inventory_movement_lines")
+}
+
+model SalesInvoice {
+  id                      String               @id @default(uuid()) @db.Char(36)
+  number                  String               @unique
+  customerId              String               @map("customer_id") @db.Char(36)
+  customerLedgerAccountId String               @map("customer_ledger_account_id") @db.Char(36)
+  revenueAccountId        String               @map("revenue_account_id") @db.Char(36)
+  inventoryAccountId      String               @map("inventory_account_id") @db.Char(36)
+  cogsAccountId           String               @map("cogs_account_id") @db.Char(36)
+  invoiceDate             DateTime             @map("invoice_date") @db.Date
+  dueDate                 DateTime?            @map("due_date") @db.Date
+  status                  DocumentStatus       @default(draft)
+  currencyCode            CurrencyCode         @map("currency_code")
+  exchangeRateToBase      Decimal              @default(1) @map("exchange_rate_to_base") @db.Decimal(18, 8)
+  subtotal                Decimal              @default(0) @db.Decimal(18, 2)
+  discountTotal           Decimal              @default(0) @map("discount_total") @db.Decimal(18, 2)
+  taxTotal                Decimal              @default(0) @map("tax_total") @db.Decimal(18, 2)
+  total                   Decimal              @default(0) @db.Decimal(18, 2)
+  paidTotal               Decimal              @default(0) @map("paid_total") @db.Decimal(18, 2)
+  journalEntryId          String?              @map("journal_entry_id") @db.Char(36)
+  inventoryMovementId     String?              @map("inventory_movement_id") @db.Char(36)
+  createdById             String?              @map("created_by") @db.Char(36)
+  customer                Partner              @relation(fields: [customerId], references: [id])
+  customerLedgerAccount   PartnerLedgerAccount @relation("SalesCustomerLedgerAccount", fields: [customerLedgerAccountId], references: [id])
+  revenueAccount          Account              @relation("SalesRevenueAccount", fields: [revenueAccountId], references: [id])
+  inventoryAccount        Account              @relation("SalesInventoryAccount", fields: [inventoryAccountId], references: [id])
+  cogsAccount             Account              @relation("SalesCogsAccount", fields: [cogsAccountId], references: [id])
+  currency                Currency             @relation(fields: [currencyCode], references: [code])
+  journalEntry            JournalEntry?        @relation(fields: [journalEntryId], references: [id])
+  inventoryMovement       InventoryMovement?   @relation(fields: [inventoryMovementId], references: [id])
+  createdBy               User?                @relation("SalesInvoiceCreator", fields: [createdById], references: [id])
+  lines                   SalesInvoiceLine[]
+  payments                Payment[]
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+
+  @@index([customerId])
+  @@index([customerLedgerAccountId])
+  @@index([invoiceDate])
+  @@map("sales_invoices")
+}
+
+model SalesInvoiceLine {
+  id             String             @id @default(uuid()) @db.Char(36)
+  salesInvoiceId String             @map("sales_invoice_id") @db.Char(36)
+  lineNo         Int                @map("line_no")
+  productId      String             @map("product_id") @db.Char(36)
+  locationId     String?            @map("location_id") @db.Char(36)
+  description    String?
+  quantity       Decimal            @db.Decimal(18, 3)
+  unitPrice      Decimal            @map("unit_price") @db.Decimal(18, 2)
+  discount       Decimal            @default(0) @db.Decimal(18, 2)
+  lineTotal      Decimal            @map("line_total") @db.Decimal(18, 2)
+  costTotal      Decimal            @default(0) @map("cost_total") @db.Decimal(18, 2)
+  salesInvoice   SalesInvoice       @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  product        Product            @relation(fields: [productId], references: [id])
+  location       InventoryLocation? @relation(fields: [locationId], references: [id])
+
+  @@unique([salesInvoiceId, lineNo])
+  @@index([productId])
+  @@map("sales_invoice_lines")
+}
+
+model PurchaseBill {
+  id                    String               @id @default(uuid()) @db.Char(36)
+  number                String               @unique
+  vendorId              String               @map("vendor_id") @db.Char(36)
+  vendorLedgerAccountId String               @map("vendor_ledger_account_id") @db.Char(36)
+  inventoryAccountId    String               @map("inventory_account_id") @db.Char(36)
+  expenseAccountId      String?              @map("expense_account_id") @db.Char(36)
+  billDate              DateTime             @map("bill_date") @db.Date
+  dueDate               DateTime?            @map("due_date") @db.Date
+  status                DocumentStatus       @default(draft)
+  currencyCode          CurrencyCode         @map("currency_code")
+  exchangeRateToBase    Decimal              @default(1) @map("exchange_rate_to_base") @db.Decimal(18, 8)
+  subtotal              Decimal              @default(0) @db.Decimal(18, 2)
+  discountTotal         Decimal              @default(0) @map("discount_total") @db.Decimal(18, 2)
+  taxTotal              Decimal              @default(0) @map("tax_total") @db.Decimal(18, 2)
+  total                 Decimal              @default(0) @db.Decimal(18, 2)
+  paidTotal             Decimal              @default(0) @map("paid_total") @db.Decimal(18, 2)
+  journalEntryId        String?              @map("journal_entry_id") @db.Char(36)
+  inventoryMovementId   String?              @map("inventory_movement_id") @db.Char(36)
+  createdById           String?              @map("created_by") @db.Char(36)
+  vendor                Partner              @relation(fields: [vendorId], references: [id])
+  vendorLedgerAccount   PartnerLedgerAccount @relation("PurchaseVendorLedgerAccount", fields: [vendorLedgerAccountId], references: [id])
+  inventoryAccount      Account              @relation("PurchaseInventoryAccount", fields: [inventoryAccountId], references: [id])
+  expenseAccount        Account?             @relation("PurchaseExpenseAccount", fields: [expenseAccountId], references: [id])
+  currency              Currency             @relation(fields: [currencyCode], references: [code])
+  journalEntry          JournalEntry?        @relation(fields: [journalEntryId], references: [id])
+  inventoryMovement     InventoryMovement?   @relation(fields: [inventoryMovementId], references: [id])
+  createdBy             User?                @relation("PurchaseBillCreator", fields: [createdById], references: [id])
+  lines                 PurchaseBillLine[]
+  payments              Payment[]
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  @@index([vendorId])
+  @@index([vendorLedgerAccountId])
+  @@index([billDate])
+  @@map("purchase_bills")
+}
+
+model PurchaseBillLine {
+  id             String             @id @default(uuid()) @db.Char(36)
+  purchaseBillId String             @map("purchase_bill_id") @db.Char(36)
+  lineNo         Int                @map("line_no")
+  productId      String             @map("product_id") @db.Char(36)
+  locationId     String?            @map("location_id") @db.Char(36)
+  description    String?
+  quantity       Decimal            @db.Decimal(18, 3)
+  unitCost       Decimal            @map("unit_cost") @db.Decimal(18, 2)
+  discount       Decimal            @default(0) @db.Decimal(18, 2)
+  lineTotal      Decimal            @map("line_total") @db.Decimal(18, 2)
+  purchaseBill   PurchaseBill       @relation(fields: [purchaseBillId], references: [id], onDelete: Cascade)
+  product        Product            @relation(fields: [productId], references: [id])
+  location       InventoryLocation? @relation(fields: [locationId], references: [id])
+
+  @@unique([purchaseBillId, lineNo])
+  @@index([productId])
+  @@map("purchase_bill_lines")
+}
+
+model Payment {
+  id                 String           @id @default(uuid()) @db.Char(36)
+  number             String           @unique
+  direction          PaymentDirection
+  partnerId          String?          @map("partner_id") @db.Char(36)
+  salesInvoiceId     String?          @map("sales_invoice_id") @db.Char(36)
+  purchaseBillId     String?          @map("purchase_bill_id") @db.Char(36)
+  fromAccountId      String           @map("from_account_id") @db.Char(36)
+  toAccountId        String           @map("to_account_id") @db.Char(36)
+  currencyCode       CurrencyCode     @map("currency_code")
+  exchangeRateToBase Decimal          @default(1) @map("exchange_rate_to_base") @db.Decimal(18, 8)
+  amount             Decimal          @db.Decimal(18, 2)
+  paymentDate        DateTime         @map("payment_date") @db.Date
+  journalEntryId     String?          @map("journal_entry_id") @db.Char(36)
+  createdById        String?          @map("created_by") @db.Char(36)
+  notes              String?
+  partner            Partner?         @relation(fields: [partnerId], references: [id])
+  salesInvoice       SalesInvoice?    @relation(fields: [salesInvoiceId], references: [id])
+  purchaseBill       PurchaseBill?    @relation(fields: [purchaseBillId], references: [id])
+  fromAccount        Account          @relation("PaymentFromAccount", fields: [fromAccountId], references: [id])
+  toAccount          Account          @relation("PaymentToAccount", fields: [toAccountId], references: [id])
+  currency           Currency         @relation(fields: [currencyCode], references: [code])
+  journalEntry       JournalEntry?    @relation(fields: [journalEntryId], references: [id])
+  createdBy          User?            @relation("PaymentCreator", fields: [createdById], references: [id])
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  @@index([partnerId])
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+model MoneyTransfer {
+  id                 String              @id @default(uuid()) @db.Char(36)
+  number             String              @unique
+  status             MoneyTransferStatus @default(draft)
+  transferDate       DateTime            @map("transfer_date") @db.Date
+  fromAccountId      String              @map("from_account_id") @db.Char(36)
+  toAccountId        String              @map("to_account_id") @db.Char(36)
+  currencyCode       CurrencyCode        @map("currency_code")
+  destinationCurrencyCode CurrencyCode?  @map("destination_currency_code")
+  exchangeRateToBase Decimal             @default(1) @map("exchange_rate_to_base") @db.Decimal(18, 8)
+  amount             Decimal             @db.Decimal(18, 2)
+  destinationAmount  Decimal?            @map("destination_amount") @db.Decimal(18, 2)
+  conversionRate     Decimal?            @map("conversion_rate") @db.Decimal(18, 8)
+  feeAmount          Decimal             @default(0) @map("fee_amount") @db.Decimal(18, 2)
+  journalEntryId     String?             @map("journal_entry_id") @db.Char(36)
+  createdById        String?             @map("created_by") @db.Char(36)
+  reference          String?
+  notes              String?
+  fromAccount        Account             @relation("TransferFromAccount", fields: [fromAccountId], references: [id])
+  toAccount          Account             @relation("TransferToAccount", fields: [toAccountId], references: [id])
+  currency           Currency            @relation(fields: [currencyCode], references: [code])
+  journalEntry       JournalEntry?       @relation(fields: [journalEntryId], references: [id])
+  createdBy          User?               @relation("MoneyTransferCreator", fields: [createdById], references: [id])
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  @@index([transferDate])
+  @@map("money_transfers")
+}
+
+model ReturnDocument {
+  id                  String             @id @default(uuid()) @db.Char(36)
+  number              String             @unique
+  type                ReturnDocumentType
+  sourceDocumentId    String             @map("source_document_id") @db.Char(36)
+  sourceDocumentNumber String            @map("source_document_number")
+  journalEntryId      String             @unique @map("journal_entry_id") @db.Char(36)
+  inventoryMovementId String             @unique @map("inventory_movement_id") @db.Char(36)
+  currencyCode        CurrencyCode       @map("currency_code")
+  subtotal            Decimal            @db.Decimal(18, 2)
+  taxTotal            Decimal            @default(0) @map("tax_total") @db.Decimal(18, 2)
+  total               Decimal            @db.Decimal(18, 2)
+  refundTotal         Decimal            @default(0) @map("refund_total") @db.Decimal(18, 2)
+  linesSnapshot       Json               @map("lines_snapshot")
+  notes               String?
+  createdById         String?            @map("created_by") @db.Char(36)
+  createdAt           DateTime           @default(now()) @map("created_at")
+
+  @@index([type, sourceDocumentId])
+  @@index([createdAt])
+  @@map("return_documents")
+}
