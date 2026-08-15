@@ -1,5 +1,6 @@
 import { asyncHandler } from "../../utils/async-handler.js";
 import { typedQuery } from "../../utils/request.js";
+import type { AuthRequest } from "../../types/auth.js";
 import type { ListPartnersQuery } from "./partners.validation.js";
 import {
   createPartner,
@@ -8,7 +9,8 @@ import {
   getPartner,
   getPartnerByCode,
   listPartners,
-  updatePartner
+  recordPartnerPayment,
+  updatePartner,
 } from "./partners.model.js";
 
 function routeId(id: string | string[]): string {
@@ -44,5 +46,19 @@ export const createPartnerLedgerAccountController = asyncHandler(
     res
       .status(201)
       .json(await createPartnerLedgerAccount(routeId(req.params.id), req.body));
-  }
+  },
+);
+
+export const recordPartnerPaymentController = asyncHandler(
+  async (req: AuthRequest, res) => {
+    res
+      .status(201)
+      .json(
+        await recordPartnerPayment(
+          routeId(req.params.id),
+          req.body,
+          req.user?.id,
+        ),
+      );
+  },
 );

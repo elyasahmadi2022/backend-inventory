@@ -1,9 +1,6 @@
 import { Router } from "express";
 import { validate } from "../../middleware/validate.js";
-import {
-  requireAuth,
-  requirePermission
-} from "../auth/auth.middleware.js";
+import { requireAuth, requirePermission } from "../auth/auth.middleware.js";
 import {
   createPartnerController,
   createPartnerLedgerAccountController,
@@ -11,7 +8,8 @@ import {
   getPartnerController,
   getPartnerByCodeController,
   listPartnersController,
-  updatePartnerController
+  recordPartnerPaymentController,
+  updatePartnerController,
 } from "./partners.controller.js";
 import {
   createPartnerLedgerAccountSchema,
@@ -19,7 +17,8 @@ import {
   listPartnersQuerySchema,
   partnerCodeParamsSchema,
   partnerIdParamsSchema,
-  updatePartnerSchema
+  recordPartnerPaymentSchema,
+  updatePartnerSchema,
 } from "./partners.validation.js";
 
 export const partnersRouter = Router();
@@ -30,34 +29,43 @@ partnersRouter.use(requirePermission("partners.manage"));
 partnersRouter.get(
   "/",
   validate({ query: listPartnersQuerySchema }),
-  listPartnersController
+  listPartnersController,
 );
-partnersRouter.post("/", validate({ body: createPartnerSchema }), createPartnerController);
+partnersRouter.post(
+  "/",
+  validate({ body: createPartnerSchema }),
+  createPartnerController,
+);
 partnersRouter.get(
   "/code/:code",
   validate({ params: partnerCodeParamsSchema }),
-  getPartnerByCodeController
+  getPartnerByCodeController,
 );
 partnersRouter.get(
   "/:id",
   validate({ params: partnerIdParamsSchema }),
-  getPartnerController
+  getPartnerController,
 );
 partnersRouter.patch(
   "/:id",
   validate({ params: partnerIdParamsSchema, body: updatePartnerSchema }),
-  updatePartnerController
+  updatePartnerController,
 );
 partnersRouter.delete(
   "/:id",
   validate({ params: partnerIdParamsSchema }),
-  deletePartnerController
+  deletePartnerController,
 );
 partnersRouter.post(
   "/:id/ledger-accounts",
   validate({
     params: partnerIdParamsSchema,
-    body: createPartnerLedgerAccountSchema
+    body: createPartnerLedgerAccountSchema,
   }),
-  createPartnerLedgerAccountController
+  createPartnerLedgerAccountController,
+);
+partnersRouter.post(
+  "/:id/payments",
+  validate({ params: partnerIdParamsSchema, body: recordPartnerPaymentSchema }),
+  recordPartnerPaymentController,
 );

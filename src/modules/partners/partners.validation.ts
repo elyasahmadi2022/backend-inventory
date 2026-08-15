@@ -4,11 +4,11 @@ import { paginationQuerySchema } from "../../utils/pagination.validation.js";
 const uuidSchema = z.string().uuid();
 
 export const partnerIdParamsSchema = z.object({
-  id: uuidSchema
+  id: uuidSchema,
 });
 
 export const partnerCodeParamsSchema = z.object({
-  code: z.string().trim().min(2).max(30)
+  code: z.string().trim().min(2).max(30),
 });
 
 export const partnerTypeSchema = z.enum([
@@ -16,7 +16,7 @@ export const partnerTypeSchema = z.enum([
   "vendor",
   "both",
   "sarafi",
-  "staff"
+  "staff",
 ]);
 
 export const currencyCodeSchema = z.enum(["AFN", "USD", "PKR"]);
@@ -27,7 +27,7 @@ export const listPartnersQuerySchema = z.object({
   isActive: z
     .enum(["true", "false"])
     .transform((value) => value === "true")
-    .optional()
+    .optional(),
 });
 
 export const createPartnerSchema = z.object({
@@ -39,14 +39,14 @@ export const createPartnerSchema = z.object({
   receivableAccountId: uuidSchema.optional(),
   payableAccountId: uuidSchema.optional(),
   ledgerCurrencies: z.array(currencyCodeSchema).min(1).default(["AFN"]),
-  isActive: z.boolean().optional()
+  isActive: z.boolean().optional(),
 });
 
 export const updatePartnerSchema = createPartnerSchema
   .omit({ code: true, ledgerCurrencies: true })
   .partial()
   .extend({
-    code: z.string().trim().min(2).max(30).optional()
+    code: z.string().trim().min(2).max(30).optional(),
   });
 
 export const createPartnerLedgerAccountSchema = z.object({
@@ -57,9 +57,18 @@ export const createPartnerLedgerAccountSchema = z.object({
     "payable",
     "advance_received",
     "advance_paid",
-    "deposit"
+    "deposit",
   ]),
-  isDefault: z.boolean().optional()
+  isDefault: z.boolean().optional(),
+});
+
+export const recordPartnerPaymentSchema = z.object({
+  direction: z.enum(["receive", "pay"]),
+  currencyCode: currencyCodeSchema,
+  amount: z.coerce.number().positive(),
+  accountId: uuidSchema,
+  paymentDate: z.coerce.date(),
+  notes: z.string().trim().min(1).max(500).optional(),
 });
 
 export type ListPartnersQuery = z.infer<typeof listPartnersQuerySchema>;
@@ -67,4 +76,7 @@ export type CreatePartnerInput = z.infer<typeof createPartnerSchema>;
 export type UpdatePartnerInput = z.infer<typeof updatePartnerSchema>;
 export type CreatePartnerLedgerAccountInput = z.infer<
   typeof createPartnerLedgerAccountSchema
+>;
+export type RecordPartnerPaymentInput = z.infer<
+  typeof recordPartnerPaymentSchema
 >;
