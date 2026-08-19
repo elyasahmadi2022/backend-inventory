@@ -187,7 +187,7 @@ export async function listPurchases(query: ListPurchasesQuery) {
   const [purchases, total] = await Promise.all([
     prisma.purchaseBill.findMany({
       where,
-      orderBy: { billDate: "desc" },
+      orderBy: [{ isImportant: "desc" }, { billDate: "desc" }],
       skip: pagination.skip,
       take: pagination.take,
       include: purchaseInclude,
@@ -404,6 +404,7 @@ export async function createPurchase(
         expenseAccountId: input.expenseAccountId,
         billDate: input.billDate,
         dueDate: input.dueDate,
+        isImportant: input.isImportant,
         status,
         currencyCode: input.currencyCode,
         exchangeRateToBase: input.exchangeRateToBase,
@@ -674,17 +675,35 @@ export async function payPurchaseBill(
     }
 
     const paymentDate = input.paymentDate ?? new Date();
-    const exchangeRateToBase = Number(existing.exchangeRateToBase);
-    await assertValidTransactionRate(tx, existing.currencyCode, exchangeRateToBase);
+    const documentRate = Number(existing.exchangeRateToBase);
+    await assertValidTransactionRate(tx, existing.currencyCode, documentRate);
+    const selectedAccount = input.paymentAccountId
+      ? await tx.account.findUnique({
+          where: { id: input.paymentAccountId },
+          select: { currencyCode: true },
+        })
+      : null;
+    const accountCurrencyCode =
+      selectedAccount?.currencyCode ?? existing.currencyCode;
+    const accountRateToBase = await resolveRateToBase(
+      tx,
+      accountCurrencyCode,
+      paymentDate,
+    );
+    const accountAmount =
+      accountCurrencyCode === existing.currencyCode
+        ? input.amount
+        : input.paymentExchangeRate
+          ? input.amount * input.paymentExchangeRate
+          : (input.amount * documentRate) / accountRateToBase;
     const paymentAccount = await resolvePaymentAccount(
       tx,
       input.paymentAccountId,
-      existing.currencyCode,
-      input.amount,
+      accountCurrencyCode,
+      accountAmount,
     );
-    const amountBase = input.amount * exchangeRateToBase;
-    const payableBase = input.amount * Number(existing.exchangeRateToBase);
-    const exchangeDifference = Math.round((amountBase - payableBase) * 100) / 100;
+    const amountBase = input.amount * documentRate;
+    const accountLineRate = amountBase / accountAmount;
     const journalNumber = await nextEntityCode(tx, "journal");
     const paymentNumber = await nextEntityCode(tx, "payment");
 
@@ -694,44 +713,25 @@ export async function payPurchaseBill(
         accountId: existing.vendorLedgerAccount.accountId,
         partnerId: existing.vendorId,
         currencyCode: existing.currencyCode,
-        exchangeRateToBase: Number(existing.exchangeRateToBase),
+        exchangeRateToBase: documentRate,
         debit: input.amount,
         credit: 0,
-        baseDebit: payableBase,
+        baseDebit: amountBase,
         baseCredit: 0,
         memo: "Vendor payment applied",
       },
       {
         lineNo: 2,
         accountId: paymentAccount.id,
-        currencyCode: existing.currencyCode,
-        exchangeRateToBase,
+        currencyCode: accountCurrencyCode,
+        exchangeRateToBase: accountLineRate,
         debit: 0,
-        credit: input.amount,
+        credit: accountAmount,
         baseDebit: 0,
         baseCredit: amountBase,
         memo: "Money paid to vendor",
       },
     ];
-
-    let exchangeAccount: Awaited<ReturnType<typeof resolveBaseCurrencyAccount>> | null = null;
-    if (Math.abs(exchangeDifference) >= 0.01) {
-      exchangeAccount = await resolveBaseCurrencyAccount(
-        tx,
-        exchangeDifference > 0 ? "exchange_loss" : "exchange_gain",
-      );
-      journalLines.push({
-        lineNo: 3,
-        accountId: exchangeAccount.account.id,
-        currencyCode: exchangeAccount.currencyCode,
-        exchangeRateToBase: 1,
-        debit: exchangeDifference > 0 ? exchangeDifference : 0,
-        credit: exchangeDifference < 0 ? Math.abs(exchangeDifference) : 0,
-        baseDebit: exchangeDifference > 0 ? exchangeDifference : 0,
-        baseCredit: exchangeDifference < 0 ? Math.abs(exchangeDifference) : 0,
-        memo: exchangeDifference > 0 ? "Realized exchange loss" : "Realized exchange gain",
-      });
-    }
 
     assertBalancedJournalLines(journalLines);
 
@@ -762,7 +762,7 @@ export async function payPurchaseBill(
         fromAccountId: paymentAccount.id,
         toAccountId: existing.vendorLedgerAccount.accountId,
         currencyCode: existing.currencyCode,
-        exchangeRateToBase,
+        exchangeRateToBase: documentRate,
         amount: input.amount,
         paymentDate,
         journalEntryId: journalEntry.id,
@@ -781,19 +781,10 @@ export async function payPurchaseBill(
     await updateAccountBalance(
       tx,
       paymentAccount.id,
-      existing.currencyCode,
+      accountCurrencyCode,
       0,
-      input.amount,
+      accountAmount,
     );
-    if (exchangeAccount) {
-      await updateAccountBalance(
-        tx,
-        exchangeAccount.account.id,
-        exchangeAccount.currencyCode,
-        exchangeDifference > 0 ? exchangeDifference : 0,
-        exchangeDifference < 0 ? Math.abs(exchangeDifference) : 0,
-      );
-    }
 
     return tx.purchaseBill.update({
       where: { id: existing.id },
@@ -1050,6 +1041,7 @@ export async function updatePurchase(
         expenseAccountId: input.expenseAccountId,
         billDate: input.billDate,
         dueDate: input.dueDate,
+        isImportant: input.isImportant,
         status,
         exchangeRateToBase: input.exchangeRateToBase,
         subtotal,

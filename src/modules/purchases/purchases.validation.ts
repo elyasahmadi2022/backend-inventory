@@ -37,6 +37,7 @@ export const createPurchaseSchema = z.object({
   vendorId: uuidSchema,
   billDate: z.coerce.date(),
   dueDate: z.coerce.date().optional(),
+  isImportant: z.boolean().optional().default(false),
   currencyCode: currencyCodeSchema,
   exchangeRateToBase: z.coerce.number().positive().default(1),
   productExchangeRate: z.coerce.number().positive().optional(),
@@ -58,7 +59,8 @@ export const purchasePaymentSchema = z.object({
   amount: z.coerce.number().positive(),
   paymentAccountId: uuidSchema.optional(),
   paymentDate: z.coerce.date().optional(),
-  notes: z.string().trim().min(1).max(500).optional()
+  notes: z.string().trim().min(1).max(500).optional(),
+  paymentExchangeRate: z.coerce.number().positive().optional(),
 });
 
 export const purchaseReturnLineSchema = z.object({

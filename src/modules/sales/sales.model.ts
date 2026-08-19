@@ -189,7 +189,7 @@ export async function listSales(query: ListSalesQuery) {
   const [sales, total] = await Promise.all([
     prisma.salesInvoice.findMany({
       where,
-      orderBy: { invoiceDate: "desc" },
+      orderBy: [{ isImportant: "desc" }, { invoiceDate: "desc" }],
       skip: pagination.skip,
       take: pagination.take,
       include: saleInclude,
@@ -468,6 +468,7 @@ export async function createSale(input: CreateSaleInput, createdById?: string) {
         cogsAccountId: cogsAccount.id,
         invoiceDate: input.invoiceDate,
         dueDate: input.dueDate,
+        isImportant: input.isImportant,
         status,
         currencyCode: input.currencyCode,
         exchangeRateToBase: input.exchangeRateToBase,
@@ -757,16 +758,34 @@ export async function receiveSalePayment(
     }
 
     const paymentDate = input.paymentDate ?? new Date();
-    const exchangeRateToBase = Number(existing.exchangeRateToBase);
-    await assertValidTransactionRate(tx, existing.currencyCode, exchangeRateToBase);
+    const documentRate = Number(existing.exchangeRateToBase);
+    await assertValidTransactionRate(tx, existing.currencyCode, documentRate);
+    const selectedAccount = input.receiptAccountId
+      ? await tx.account.findUnique({
+          where: { id: input.receiptAccountId },
+          select: { currencyCode: true },
+        })
+      : null;
+    const accountCurrencyCode =
+      selectedAccount?.currencyCode ?? existing.currencyCode;
+    const accountRateToBase = await resolveRateToBase(
+      tx,
+      accountCurrencyCode,
+      paymentDate,
+    );
+    const accountAmount =
+      accountCurrencyCode === existing.currencyCode
+        ? input.amount
+        : input.paymentExchangeRate
+          ? input.amount * input.paymentExchangeRate
+          : (input.amount * documentRate) / accountRateToBase;
     const receiptAccount = await resolvePaymentAccount(
       tx,
       input.receiptAccountId,
-      existing.currencyCode,
+      accountCurrencyCode,
     );
-    const amountBase = input.amount * exchangeRateToBase;
-    const receivableBase = input.amount * Number(existing.exchangeRateToBase);
-    const exchangeDifference = Math.round((amountBase - receivableBase) * 100) / 100;
+    const amountBase = input.amount * documentRate;
+    const accountLineRate = amountBase / accountAmount;
     const journalNumber = await nextEntityCode(tx, "journal");
     const paymentNumber = await nextEntityCode(tx, "payment");
 
@@ -774,9 +793,9 @@ export async function receiveSalePayment(
       {
         lineNo: 1,
         accountId: receiptAccount.id,
-        currencyCode: existing.currencyCode,
-        exchangeRateToBase: Number(existing.exchangeRateToBase),
-        debit: input.amount,
+        currencyCode: accountCurrencyCode,
+        exchangeRateToBase: accountLineRate,
+        debit: accountAmount,
         credit: 0,
         baseDebit: amountBase,
         baseCredit: 0,
@@ -787,33 +806,14 @@ export async function receiveSalePayment(
         accountId: existing.customerLedgerAccount.accountId,
         partnerId: existing.customerId,
         currencyCode: existing.currencyCode,
-        exchangeRateToBase,
+        exchangeRateToBase: documentRate,
         debit: 0,
         credit: input.amount,
         baseDebit: 0,
-        baseCredit: receivableBase,
+        baseCredit: amountBase,
         memo: "Receivable payment applied",
       },
     ];
-
-    let exchangeAccount: Awaited<ReturnType<typeof resolveBaseCurrencyAccount>> | null = null;
-    if (Math.abs(exchangeDifference) >= 0.01) {
-      exchangeAccount = await resolveBaseCurrencyAccount(
-        tx,
-        exchangeDifference > 0 ? "exchange_gain" : "exchange_loss",
-      );
-      journalLines.push({
-        lineNo: 3,
-        accountId: exchangeAccount.account.id,
-        currencyCode: exchangeAccount.currencyCode,
-        exchangeRateToBase: 1,
-        debit: exchangeDifference < 0 ? Math.abs(exchangeDifference) : 0,
-        credit: exchangeDifference > 0 ? exchangeDifference : 0,
-        baseDebit: exchangeDifference < 0 ? Math.abs(exchangeDifference) : 0,
-        baseCredit: exchangeDifference > 0 ? exchangeDifference : 0,
-        memo: exchangeDifference > 0 ? "Realized exchange gain" : "Realized exchange loss",
-      });
-    }
 
     assertBalancedJournalLines(journalLines);
 
@@ -844,7 +844,7 @@ export async function receiveSalePayment(
         fromAccountId: existing.customerLedgerAccount.accountId,
         toAccountId: receiptAccount.id,
         currencyCode: existing.currencyCode,
-        exchangeRateToBase,
+        exchangeRateToBase: documentRate,
         amount: input.amount,
         paymentDate,
         journalEntryId: journalEntry.id,
@@ -856,8 +856,8 @@ export async function receiveSalePayment(
     await updateAccountBalance(
       tx,
       receiptAccount.id,
-      existing.currencyCode,
-      input.amount,
+      accountCurrencyCode,
+      accountAmount,
       0,
     );
     await updateAccountBalance(
@@ -867,15 +867,6 @@ export async function receiveSalePayment(
       0,
       input.amount,
     );
-    if (exchangeAccount) {
-      await updateAccountBalance(
-        tx,
-        exchangeAccount.account.id,
-        exchangeAccount.currencyCode,
-        exchangeDifference < 0 ? Math.abs(exchangeDifference) : 0,
-        exchangeDifference > 0 ? exchangeDifference : 0,
-      );
-    }
 
     return tx.salesInvoice.update({
       where: { id: existing.id },
@@ -1187,6 +1178,7 @@ export async function updateSale(
         cogsAccountId: cogsAccount.id,
         invoiceDate: input.invoiceDate,
         dueDate: input.dueDate,
+        isImportant: input.isImportant,
         status,
         exchangeRateToBase: input.exchangeRateToBase,
         subtotal,
