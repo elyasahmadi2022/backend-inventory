@@ -38,6 +38,7 @@ export const createSaleSchema = z.object({
   customerId: uuidSchema.optional(),
   invoiceDate: z.coerce.date(),
   dueDate: z.coerce.date().optional(),
+  isImportant: z.boolean().optional().default(false),
   currencyCode: currencyCodeSchema,
   exchangeRateToBase: z.coerce.number().positive().default(1),
   productCurrencyCode: currencyCodeSchema.optional(),
@@ -61,7 +62,8 @@ export const salePaymentSchema = z.object({
   amount: z.coerce.number().positive(),
   receiptAccountId: uuidSchema.optional(),
   paymentDate: z.coerce.date().optional(),
-  notes: z.string().trim().min(1).max(500).optional()
+  notes: z.string().trim().min(1).max(500).optional(),
+  paymentExchangeRate: z.coerce.number().positive().optional(),
 });
 
 export const saleReturnLineSchema = z.object({

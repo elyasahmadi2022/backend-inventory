@@ -654,6 +654,7 @@ model SalesInvoice {
   invoiceDate             DateTime             @map("invoice_date") @db.Date
   dueDate                 DateTime?            @map("due_date") @db.Date
   status                  DocumentStatus       @default(draft)
+  isImportant             Boolean              @default(false) @map("is_important")
   currencyCode            CurrencyCode         @map("currency_code")
   exchangeRateToBase      Decimal              @default(1) @map("exchange_rate_to_base") @db.Decimal(18, 8)
   subtotal                Decimal              @default(0) @db.Decimal(18, 2)
@@ -715,6 +716,7 @@ model PurchaseBill {
   billDate              DateTime             @map("bill_date") @db.Date
   dueDate               DateTime?            @map("due_date") @db.Date
   status                DocumentStatus       @default(draft)
+  isImportant           Boolean              @default(false) @map("is_important")
   currencyCode          CurrencyCode         @map("currency_code")
   exchangeRateToBase    Decimal              @default(1) @map("exchange_rate_to_base") @db.Decimal(18, 8)
   subtotal              Decimal              @default(0) @db.Decimal(18, 2)
